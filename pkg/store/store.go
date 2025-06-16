@@ -1,7 +1,10 @@
 package store
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -32,7 +35,17 @@ func NewKVStore(fileName string) *kvStore {
 		FileName: fileName,
 		Count:    0,
 	}
+}
 
+func InitKvStore(filename string) {
+	once.Do(func() {
+		KVStore = NewKVStore(filename)
+		if err := KVStore.loadFromFile(); err != nil {
+			fmt.Println("Error loading data from file: ", err)
+		}
+		go KVStore.periodicSaveData()
+		go KVStore.cleanUp()
+	})
 }
 
 func (kv *kvStore) Get(key string) (string, error) {
@@ -60,7 +73,7 @@ func (kv *kvStore) Update(key string, value string) (bool, error) {
 	defer kv.Mu.Unlock()
 
 	if val, exists := kv.Store[key]; exists {
-		kv.Store[key] := kvMapValue{Value: value, ExpireAt: val.ExpireAt}
+		kv.Store[key] = kvMapValue{Value: value, ExpireAt: val.ExpireAt}
 		kv.Count++
 		utils.AddLog("UPDATE", "SUCCESS", key)
 		return true, nil
@@ -76,4 +89,70 @@ func (kv *kvStore) Delete(key string) {
 	delete(kv.Store, key)
 	kv.Count++
 	utils.AddLog("DELETE", "SUCCESS", key)
+}
+
+func (kv *kvStore) loadFromFile() error {
+	resp, err := os.ReadFile(kv.FileName)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("File does not exist, starting with an empty Store")
+			return nil
+		}
+		return err
+	}
+	return json.Unmarshal(resp, &kv.Store)
+}
+
+func (kv *kvStore) periodicSaveData() {
+	timer := time.NewTicker(1 * time.Minute)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-timer.C:
+			kv.checkAndSave("Periodic")
+		default:
+			time.Sleep(1000 * time.Millisecond)
+			kv.checkAndSave("Count")
+		}
+	}
+}
+
+func (kv *kvStore) checkAndSave(opType string) {
+	kv.Mu.Lock()
+	defer kv.Mu.Unlock()
+
+	if opType == "Periodic" || kv.Count >= 5 {
+		err := kv.saveToFile()
+		if err != nil {
+			fmt.Println("Error saving to file: %v\n", err)
+		}
+	}
+}
+
+func (kv *kvStore) saveToFile() error {
+	jsonData, err := json.Marshal(kv.Store)
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(kv.FileName, []byte(jsonData), 0644)
+	if err != nil {
+		return err
+	}
+	kv.Count = 0
+	return nil
+}
+
+func (kv *kvStore) cleanUp() {
+	timer := time.NewTicker(time.Second * 5)
+	defer timer.Stop()
+
+	for range timer.C {
+		for key, val := range kv.Store {
+			if time.Now().After(val.ExpireAt) {
+				kv.Delete(key)
+				utils.AddLog("CLEANUP", "Expired", key)
+			}
+		}
+	}
 }

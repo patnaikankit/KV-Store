@@ -9,8 +9,8 @@ import (
 func AddLog(op, status, key string) {
 	newLog := fmt.Sprintf("%s - %s operation - Key: %s - Status: %s\n", time.Now().Format(time.RFC3339),
 		op,
-		key,
 		status,
+		key,
 	)
 
 	f, err := os.OpenFile("logs.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
