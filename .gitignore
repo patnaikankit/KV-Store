@@ -1,1 +1,3 @@
 .env
+kv-logs.log
+kv-data.json

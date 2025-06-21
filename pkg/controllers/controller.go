@@ -9,17 +9,13 @@ import (
 	"github.com/patnaikankit/KV-Store.git/pkg/store"
 )
 
-type SetBody struct {
-	Key string `json:"key"`
-}
-
 type RequestBody struct {
 	Key   string `json:"Key"`
 	Value string `json:"value"`
 	TTL   string `json:"ttl"`
 }
 
-func Get(w http.ResponseWriter, r *http.Request) {
+func GetKey(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not found", http.StatusMethodNotAllowed)
 		return
@@ -31,9 +27,9 @@ func Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	val := store.KVStore.Get(key)
-	if val == "" {
-		http.Error(w, "Key does not exits", http.StatusNotFound)
+	val, err := store.KVStore.Get(key)
+	if err != nil {
+		http.Error(w, "Key does not exist", http.StatusNotFound)
 		return
 	}
 
@@ -44,14 +40,14 @@ func Get(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	err := json.NewEncoder(w).Encode(resp)
+	err = json.NewEncoder(w).Encode(resp)
 	if err != nil {
 		http.Error(w, "Error encoding response", http.StatusInternalServerError)
 		return
 	}
 }
 
-func Set(w http.ResponseWriter, r *http.Request) {
+func SetKey(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -81,26 +77,31 @@ func Set(w http.ResponseWriter, r *http.Request) {
 		ttl = time.Hour * 24
 	}
 
-	store.KVStore.Set(
+	err = store.KVStore.Set(
 		data.Key,
 		store.KVMapValue{Value: data.Value, ExpireAt: time.Now().Add(ttl)},
 	)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 
 	resp := map[string]string{
-		"status": "Success", 
-		"message": "Key-value pair set successfully"
+		"status":  "Success",
+		"message": "Key-value pair set successfully",
 	}
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, "Error encoding response", http.StatusInternalServerError)
-		return 
+		return
 	}
 }
 
-func Update(w *http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPatch || r.Method != http.MethodPut {
+func UpdateKey(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch && r.Method != http.MethodPut {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -123,21 +124,25 @@ func Update(w *http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isUpdated := store.KVStore.Update(data.Key, data.Value)
+	isUpdated, err := store.KVStore.Update(data.Key, data.Value)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	var resp map[string]string
 
 	if isUpdated {
 		resp = map[string]string{
-			"status": "Success",
-			"message": "Key Updated successfully"
+			"status":  "Success",
+			"message": "Key Updated successfully",
 		}
 		w.WriteHeader(http.StatusOK)
-	}
-	else {
+	} else {
 		resp = map[string]string{
-			"status": "failure",
-			"message": "Couldn't update successfully"
+			"status":  "Failure",
+			"message": "Couldn't update successfully",
 		}
 	}
 
@@ -147,7 +152,7 @@ func Update(w *http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func Delete(w http.ResponseWriter, r *http.Request) {
+func DeleteKey(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -159,13 +164,17 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store.KVStore.Delete(key)
+	if err := store.KVStore.Delete(key); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
 	resp := map[string]string{
-		"status": "Success",
-		"message": "Key-value deleted successfully"
+		"status":  "Success",
+		"message": "Key-value deleted successfully",
 	}
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, "Error encoding response", http.StatusInternalServerError)
