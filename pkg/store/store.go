@@ -54,6 +54,7 @@ func (kv *kvStore) Get(key string) (string, error) {
 
 	resp, ok := kv.Store[key]
 	if !ok {
+		utils.AddLog("READ", "FAILED", key)
 		return "", errors.New("key not found")
 	}
 

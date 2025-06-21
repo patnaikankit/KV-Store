@@ -13,7 +13,7 @@ func AddLog(op, status, key string) {
 		status,
 	)
 
-	f, err := os.OpenFile("../kv-logs.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile("../cmd/logs.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Println("Error opening log file:", err)
 		return
